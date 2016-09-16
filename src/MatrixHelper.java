@@ -126,6 +126,12 @@ public class MatrixHelper {
 		return result;
 	}
 	
+	public static double[][] newAlmostDiagonalMatrix(int size) {
+		double[][] matrix = new double[size][size];
+		almostDiagonalMatrix(matrix);
+		return matrix;
+	}
+
 	public static void almostDiagonalMatrix(double[][] matrix) {
 		Random r = new Random();
 		int rows = matrix.length;
@@ -133,13 +139,25 @@ public class MatrixHelper {
 		for (int row = 0; row < rows; row++) {
 			double factor = 0;
 			for (int column = 0; column < columns; column++) {
-				matrix[row][column] = 1.0/columns + 0.01 * r.nextDouble();
+				matrix[row][column] = 1.0 / columns * ((row == column ? 8 : 1) + r.nextDouble());
 				factor += matrix[row][column];
 			}
 			for (int column = 0; column < columns; column++) {
 				matrix[row][column] /= factor;
 			}
 		}
+	}
+
+	public static double[][] newRowStochasticMatrix(int rows, int columns) {
+		double[][] matrix = new double[rows][columns];
+		rowStochasticMatrix(matrix);
+		return matrix;
+	}
+
+	public static double[] newRowStochasticArray(int columns) {
+		double[] array = new double[columns];
+		rowStochasticArray(array);
+		return array;
 	}
 
 	public static void rowStochasticMatrix(double[][] matrix) {
@@ -159,6 +177,15 @@ public class MatrixHelper {
 		for (int column = 0; column < array.length; column++) {
 			array[column] /= factor;
 		}
+	}
+
+	public static int argMax(double[] array) {
+		int bestIndex = 0;
+		for (int i = 0; i < array.length; i++) {
+			if (array[i] > array[bestIndex])
+				bestIndex = i;
+		}
+		return bestIndex;
 	}
 
 	public static double[][] parseMatrix(String line) {
@@ -199,7 +226,7 @@ public class MatrixHelper {
 		do {
 			c = input.read();
 			sb.append((char) c);
-		} while (c>='0' && c<='9');
+		} while (c >= '0' && c <= '9');
 		return Integer.parseInt(sb.toString().trim());
 	}
 
@@ -266,14 +293,20 @@ public class MatrixHelper {
 		StringBuilder sb = new StringBuilder();
 		sb.append("[");
 		for (int column = 0; column < array.length; column++) {
-			sb.append("\t" + nf.format(array[column]));
+			String number;
+			if (Double.isNaN(array[column]))
+				number = "NaN";
+			else
+				number = nf.format(array[column]);
+
+			sb.append("\t" + number);
 		}
 		sb.append("\t]\n");
 		return sb.toString();
 	}
-	
-	public static double distance(double[][] first, double[][] second){
-		check(first.length==second.length&&first[0].length==second[0].length);
+
+	public static double distance(double[][] first, double[][] second) {
+		check(first.length == second.length && first[0].length == second[0].length);
 		double dist = 0;
 		for (int i = 0; i < first.length; i++) {
 			for (int j = 0; j < first[0].length; j++) {
@@ -282,13 +315,40 @@ public class MatrixHelper {
 		}
 		return dist;
 	}
-	
-	public static double distance(double[] first, double[] second){
-		check(first.length==second.length);
+
+	public static double distance(double[] first, double[] second) {
+		check(first.length == second.length);
 		double dist = 0;
 		for (int i = 0; i < first.length; i++) {
-				dist += Math.pow((first[i] - second[i]),2);
+			dist += Math.pow((first[i] - second[i]), 2);
 		}
 		return Math.sqrt(dist);
+	}
+
+	public static void copy(double[][] from, double[][] to) {
+		for (int row = 0; row < from.length; row++) {
+			for (int column = 0; column < from[0].length; column++) {
+				to[row][column] = from[row][column];
+			}
+		}
+	}
+
+	public static void copy(double[] from, double[] to) {
+		for (int column = 0; column < from.length; column++) {
+			to[column] = from[column];
+		}
+	}
+
+	public static double[] normalize(double[] array) {
+		double[] result = new double[array.length];
+		double factor = 0;
+		for (int column = 0; column < array.length; column++) {
+			factor += array[column];
+		}
+		if (factor != 0)
+			for (int column = 0; column < array.length; column++) {
+				result[column] = array[column]/factor;
+			}
+		return result;
 	}
 }

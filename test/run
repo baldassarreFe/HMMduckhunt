@@ -1,0 +1,30 @@
+#!/bin/bash
+
+mkdir "$$"
+cd "$$"
+mkfifo n s e w p no so eo wo po
+
+echo "N"
+java -cp ../../bin Main server load "../../inputs/NorthEmissions.in" < n | java -cp ../../bin Main > n
+echo "S"
+java -cp ../../bin Main server load "../../inputs/SouthEmissions.in" < s | java -cp ../../bin Main > s
+echo "E"
+java -cp ../../bin Main server load "../../inputs/EastEmissions.in" < e | java -cp ../../bin Main > e
+echo "W"
+java -cp ../../bin Main server load "../../inputs/WestEmissions.in" < w | java -cp ../../bin Main > w
+echo "P"
+java -cp ../../bin Main server load "../../inputs/ParadiseEmissions.in" < p | java -cp ../../bin Main > p
+
+echo "NO"
+java -cp ../../bin Main server load "../../inputs/NorthEmissionsOpponent.in" < no | java -cp ../../bin Main > no
+echo "SO"
+java -cp ../../bin Main server load "../../inputs/SouthEmissionsOpponent.in" < so | java -cp ../../bin Main > so
+echo "EO"
+java -cp ../../bin Main server load "../../inputs/EastEmissionsOpponent.in" < eo | java -cp ../../bin Main > eo
+echo "WO"
+java -cp ../../bin Main server load "../../inputs/WestEmissionsOpponent.in" < wo | java -cp ../../bin Main > wo
+echo "PO"
+java -cp ../../bin Main server load "../../inputs/ParadiseEmissionsOpponent.in" < po | java -cp ../../bin Main > po
+
+cd ..
+rm -r "$$"
