@@ -8,7 +8,8 @@ import java.util.stream.Collectors;
 class Player {
 
 	/** states */
-	private static final int N = 2;
+	private static final int N_GUESSING = 3;
+	private static final int N_SHOOTING = 2;
 	/** emissions */
 	private static final int M = Constants.COUNT_MOVE;
 	/** Max sequence length */
@@ -29,7 +30,8 @@ class Player {
 	private static final int MIN_ROUND_TO_SHOOT = 1;
 
 	// TODO better use a fixed value or one that varies linearly with T?
-	private static final double MIN_PROB_TO_SHOOT = 0.97;
+	private static final double MIN_PROB_TO_SHOOT = 0.7;
+
 	private static double minProbToShoot(int T) {
 		// double startProb = .4;
 		// double endProb = 0;
@@ -41,21 +43,23 @@ class Player {
 	}
 
 	// debug info
-	private static final boolean DEBUG_LINES = true;
-	private static final boolean DEBUG_BIRD_UPDATES = false;
-	private static final boolean DEBUG_SHOOT = false;
-	private static final boolean DEBUG_GUESSING_UPDATES = false;
-	private static final boolean DEBUG_ROUND_GUESSING = true;
-	private static final boolean DEBUG_ROUND_REVEAL = true;
-	private static final boolean DEBUG_TOTAL_SCORES = true;
-	
-//	private static final boolean DEBUG_LINES = false;
-//	private static final boolean DEBUG_BIRD_UPDATES = false;
-//	private static final boolean DEBUG_SHOOT = false;
-//	private static final boolean DEBUG_GUESSING_UPDATES = false;
-//	private static final boolean DEBUG_ROUND_GUESSING = false;
-//	private static final boolean DEBUG_ROUND_REVEAL = false;
-//	private static final boolean DEBUG_TOTAL_SCORES = true;
+	private static boolean DEBUG_BIRD_UPDATES = false;
+	private static boolean DEBUG_LINES = false;
+	private static boolean DEBUG_SHOOT = false;
+	private static boolean DEBUG_GUESSING_UPDATES = false;
+	private static boolean DEBUG_ROUND_GUESSING = false;
+	private static boolean DEBUG_ROUND_REVEAL = false;
+	private static boolean DEBUG_TOTAL_SCORES = true;
+
+	static {
+//		DEBUG_LINES = true;
+//		DEBUG_BIRD_UPDATES = false;
+//		DEBUG_SHOOT = true;
+//		DEBUG_GUESSING_UPDATES = false;
+//		DEBUG_ROUND_GUESSING = false;
+//		DEBUG_ROUND_REVEAL = true;
+//		DEBUG_TOTAL_SCORES = true;
+	}
 
 	// Matrices for the HMM of the birds in the current round
 	// A = transition
@@ -91,9 +95,11 @@ class Player {
 	int totalHits = 0;
 	int totalGuessAttempts = 0;
 	int totalGuesses = 0;
+	private int[] birdsPerRound;
 	Map<Integer, ArrayList<int[]>> sequencesPerSpecies;
 
 	public Player() {
+		birdsPerRound = new int[10];
 		sequencesPerSpecies = new HashMap<Integer, ArrayList<int[]>>();
 		for (int s = 0; s < Constants.COUNT_SPECIES; s++) {
 			sequencesPerSpecies.put(s, new ArrayList<int[]>());
@@ -186,20 +192,31 @@ class Player {
 		int bestBird = -1;
 		int bestEmission = -1;
 		for (int b = 0; b < numBirds; b++) {
-			if (riskyShots[b])
+			int species = guessesMade[b];
+			// skip risky birds (unknown or storks)
+			if (riskyShots[b] || Aspecies[species] == null)
 				continue;
-			if (pState.getBird(b).isAlive()) {
-				// TODO pick the best between the 2 emissions
-				double[] emissions = HiddenMarkovModel.nextEmissionDistributionKnowingSequence(
-						Arrays.copyOf(Obirds[b], Tbirds[b]), Abirds[b], Bbirds[b], Pibirds[b]);
 
-				// double[] lastState = getLastStateVector(Bbirds[b],
-				// Obirds[b][Tbirds[b] - 1]);
-				// double[] emissions2 =
-				// HiddenMarkovModel.nextEmissions(Abirds[b], Bbirds[b],
-				// lastState);
+			if (pState.getBird(b).isAlive()) {
+				// OPT 1
+				// double[] emissions =
+				// HiddenMarkovModel.nextEmissionDistributionKnowingSequence(
+				// Arrays.copyOf(Obirds[b], Tbirds[b]), Abirds[b], Bbirds[b],
+				// Pibirds[b]);
+
+				// OPT 2
+				double[] lastState = getLastStateVector(Bspecies[species], Obirds[b][Tbirds[b] - 1]);
+				double[] emissions = HiddenMarkovModel.nextEmissions(Aspecies[species], Bspecies[species], lastState);
 
 				int move = MatrixHelper.argMax(emissions);
+
+				if (DEBUG_SHOOT) {
+					System.err.printf("Round %d\tT %d\tbird %d\temissions %s best %d (%f)\n", currentRound,
+							currentObsLength, b, Arrays.stream(emissions).mapToObj(p -> String.format("%.3f", p))
+									.collect(Collectors.joining(", ", "[", "]")),
+							move, emissions[move]);
+				}
+
 				if (emissions[move] > bestProb) {
 					bestProb = emissions[move];
 					bestBird = b;
@@ -209,16 +226,14 @@ class Player {
 		}
 
 		Action action;
-		String debug = String.format("Round %d\tT %d\tbird %d\tmove %d\tconfidence %f", currentRound, currentObsLength,
-				bestBird, bestEmission, bestProb);
-
-		// if (bestProb > (currentObsLength/MAX_T) * MIN_PROB_TO_SHOOT) {
+		String debug;
 		if (bestBird != -1 && bestProb >= minProbToShoot(currentObsLength)) {
 			totalShots++;
 			action = new Action(bestBird, bestEmission);
-			debug += " <-- SHOOT";
+			debug = " --> SHOOT bird " + bestBird + " move " + bestEmission;
 		} else {
 			action = ACTION_DONT_SHOOT;
+			debug = " --> DONT SHOOT";
 		}
 		if (DEBUG_SHOOT)
 			System.err.println(debug);
@@ -237,9 +252,9 @@ class Player {
 				int T = Tbirds[b];
 				int[] O = Arrays.copyOf(Obirds[b], T);
 
-				double[][] Anew = MatrixHelper.newRowStochasticMatrix(N, N);
-				double[][] Bnew = MatrixHelper.newRowStochasticMatrix(N, M);
-				double[] Pinew = MatrixHelper.newRowStochasticArray(N);
+				double[][] Anew = MatrixHelper.newRowStochasticMatrix(N_SHOOTING, N_SHOOTING);
+				double[][] Bnew = MatrixHelper.newRowStochasticMatrix(N_SHOOTING, M);
+				double[] Pinew = MatrixHelper.newRowStochasticArray(N_SHOOTING);
 
 				// TODO try different ratios
 				// double[] statsNew =
@@ -260,8 +275,8 @@ class Player {
 				int itersOld = (int) statsOld[0];
 				double logProbOld = statsOld[1];
 
-				String debug = String.format("Round %d\tbird %d\tT %d\tlogProbNew %f (%d)\tlogProbOld %f (%d)\t",
-						currentRound, b, T, logProbNew, itersNew, logProbOld, itersOld);
+				String debug = String.format("Round %d\tT %d\tbird %d\tlogProbNew %f (%d)\tlogProbOld %f (%d)\t",
+						currentRound, T, b, logProbNew, itersNew, logProbOld, itersOld);
 
 				// which one is the best model?
 				if (Double.isFinite(logProbOld) && Double.isFinite(logProbNew)) {
@@ -305,12 +320,13 @@ class Player {
 		riskyShots = new boolean[numBirds];
 		lastGuessUpdate = 0;
 		currentRound++;
+		birdsPerRound[currentRound] = numBirds;
 		totalBirds += numBirds;
 
 		for (int b = 0; b < numBirds; b++) {
-			Abirds[b] = MatrixHelper.newAlmostDiagonalMatrix(N);
-			Bbirds[b] = MatrixHelper.newRowStochasticMatrix(N, M);
-			Pibirds[b] = MatrixHelper.newRowStochasticArray(N);
+			Abirds[b] = MatrixHelper.newAlmostDiagonalMatrix(N_SHOOTING);
+			Bbirds[b] = MatrixHelper.newRowStochasticMatrix(N_SHOOTING, M);
+			Pibirds[b] = MatrixHelper.newRowStochasticArray(N_SHOOTING);
 		}
 
 		if (DEBUG_LINES)
@@ -383,25 +399,50 @@ class Player {
 
 			// for every species, keep the highest prob from the species models
 			for (int s = 0; s < Constants.COUNT_SPECIES; s++) {
-				// for every saved model in history, keep the best
 				absoluteProbs[s] = Double.NEGATIVE_INFINITY;
 				if (Aspecies[s] == null) {
 					continue;
 				}
-				double[][] A = Aspecies[s];
-				double[][] B = Bspecies[s];
+
+				// OPT 1
 				// try with every Pi that has one 1 and the rest 0,
 				// keep only the best result
-				for (int p = 0; p < N; p++) {
-					double[] Pi = new double[N];
+				for (int p = 0; p < N_GUESSING; p++) {
+					double[] Pi = new double[N_GUESSING];
 					Pi[p] = 1;
-					double logProbTemp = HiddenMarkovModel.alphaPass(O, A, B, Pi);
+					double logProbTemp = HiddenMarkovModel.alphaPass(O, Aspecies[s], Bspecies[s], Pi);
 					if (logProbTemp > absoluteProbs[s]) {
 						absoluteProbs[s] = logProbTemp;
 					}
 				}
-				if (DEBUG_GUESSING_UPDATES || (DEBUG_ROUND_GUESSING
-						&& currentObsLength >= MAX_T - UPDATE_GUESSES_EVERY))
+
+				// OPT 2
+				// try with some random Pi
+				for (int p = 0; p < 10; p++) {
+					double[] P = MatrixHelper.newRowStochasticArray(N_GUESSING);
+					double logProbTemp = HiddenMarkovModel.alphaPass(O, Aspecies[s], Bspecies[s], P);
+					if (logProbTemp > absoluteProbs[s]) {
+						absoluteProbs[s] = logProbTemp;
+					}
+				}
+
+				// OPT 3
+				// use pi of the bird
+				// double logProbBird = HiddenMarkovModel.alphaPass(O,
+				// Aspecies[s], Bspecies[s], Pibirds[b]);
+				// if (logProbBird > absoluteProbs[s]) {
+				// absoluteProbs[s] = logProbBird;
+				// }
+
+				// OPT 4
+				// use pi of the species model
+				double logProbSpecies = HiddenMarkovModel.alphaPass(O, Aspecies[s], Bspecies[s], Pispecies[s]);
+				if (logProbSpecies > absoluteProbs[s]) {
+					absoluteProbs[s] = logProbSpecies;
+				}
+
+				if (DEBUG_GUESSING_UPDATES
+						|| (DEBUG_ROUND_GUESSING && currentObsLength >= MAX_T - UPDATE_GUESSES_EVERY))
 					System.err.printf("Bird %d\tT %d\tspecies %d\tconfidence %f\n", b, Tbirds[b], s, absoluteProbs[s]);
 			}
 
@@ -417,16 +458,15 @@ class Player {
 				riskyShots[b] = true;
 			}
 
-			if (DEBUG_GUESSING_UPDATES || (DEBUG_ROUND_GUESSING
-					&& currentObsLength >= MAX_T - UPDATE_GUESSES_EVERY)) {
+			if (DEBUG_GUESSING_UPDATES || (DEBUG_ROUND_GUESSING && currentObsLength >= MAX_T - UPDATE_GUESSES_EVERY)) {
 				System.err.println("Relative prob: " + Arrays.stream(relativeProbs)
 						.mapToObj(p -> String.format("%.10f", p)).collect(Collectors.joining(", ", "[", "]")));
-				System.err.printf(" --->\tspecies %d\n", guessesMade[b]);
+				System.err.printf(" --->\tspecies %d%s\n", guessesMade[b], riskyShots[b] ? "\tRISKY" : "");
 			}
 		}
-		
-		if (DEBUG_GUESSING_UPDATES) {
-			System.err.printf("Risky shots:");
+
+		if (DEBUG_GUESSING_UPDATES || DEBUG_SHOOT) {
+			System.err.printf("Risky shots (T=" + currentObsLength + "):");
 			for (int b = 0; b < riskyShots.length; b++) {
 				if (riskyShots[b]) {
 					System.err.printf(" " + b);
@@ -504,9 +544,9 @@ class Player {
 				continue;
 
 			// train a new model
-			double[][] Anew = MatrixHelper.newRowStochasticMatrix(N, N);
-			double[][] Bnew = MatrixHelper.newRowStochasticMatrix(N, M);
-			double[] Pinew = MatrixHelper.newRowStochasticArray(N);
+			double[][] Anew = MatrixHelper.newRowStochasticMatrix(N_GUESSING, N_GUESSING);
+			double[][] Bnew = MatrixHelper.newRowStochasticMatrix(N_GUESSING, M);
+			double[] Pinew = MatrixHelper.newRowStochasticArray(N_GUESSING);
 
 			double[] statsNew = HiddenMarkovModel
 					.baumWelchMultiSequences(sequencesPerSpecies.get(s).toArray(new int[][] {}), Anew, Bnew, Pinew);
@@ -582,6 +622,9 @@ class Player {
 	private void printTotalScores() {
 		int scoreByHits = totalHits - (totalShots - totalHits);
 		int scoreByGuess = totalGuesses - (totalGuessAttempts - totalGuesses);
+		// System.err.println("MultiSequences");
+		// System.err.println("Birds per round: " +
+		// Arrays.toString(birdsPerRound) + " total " + totalBirds);
 		System.err.printf("Shots:  \t%d/%d\t%.2f%%\t%d\n", totalHits, totalShots, (double) totalHits / totalShots * 100,
 				scoreByHits);
 		System.err.printf("Guesses:\t%d/%d\t%.2f%%\t%d\n", totalGuesses, totalGuessAttempts,

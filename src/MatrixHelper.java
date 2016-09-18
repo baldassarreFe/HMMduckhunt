@@ -187,6 +187,15 @@ public class MatrixHelper {
 		}
 		return bestIndex;
 	}
+	
+	public static int argMin(double[] array) {
+		int bestIndex = 0;
+		for (int i = 0; i < array.length; i++) {
+			if (array[i] < array[bestIndex])
+				bestIndex = i;
+		}
+		return bestIndex;
+	}
 
 	public static double[][] parseMatrix(String line) {
 		StringTokenizer st = new StringTokenizer(line, " ");

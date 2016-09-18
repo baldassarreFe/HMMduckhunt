@@ -4,7 +4,7 @@ public class HiddenMarkovModel {
 
 	private static final double NO_DIV_BY_ZERO = Double.MIN_NORMAL;
 	/** baum welch iterations */
-	private static final long MAX_ITERATIONS = 30;
+	private static final long MAX_ITERATIONS = 100;
 
 	public static double[] nextEmissions(double[][] A, double[][] B, double[] Pi) {
 		return currentEmissions(B, nextStates(A, Pi));
